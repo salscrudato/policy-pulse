@@ -5,6 +5,7 @@ import {
   extractPDFMetadata,
   formatTextForDisplay,
 } from '../../utils'
+import { generateFormSummary, validateInsuranceForm, preprocessTextForAI } from '../../services/aiService'
 
 // Set up the worker - use jsdelivr CDN which is more reliable
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
@@ -16,6 +17,8 @@ const PDFUpload = () => {
   const [fileName, setFileName] = useState('')
   const [isDragOver, setIsDragOver] = useState(false)
   const [metadata, setMetadata] = useState(null)
+  const [coverageSummary, setCoverageSummary] = useState('')
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
   const fileInputRef = useRef(null)
 
   const extractTextFromPDF = async file => {
@@ -98,11 +101,42 @@ const PDFUpload = () => {
     fileInputRef.current?.click()
   }
 
+  const generateCoverageSummary = async () => {
+    if (!extractedText) {
+      setError('No text available to summarize. Please upload a PDF first.')
+      return
+    }
+
+    try {
+      setIsGeneratingSummary(true)
+      setError('')
+
+      // Validate if this appears to be an insurance form
+      if (!validateInsuranceForm(extractedText)) {
+        setError('This document does not appear to be an insurance form. The AI summary works best with insurance policy documents.')
+        return
+      }
+
+      // Preprocess text for better AI analysis
+      const processedText = preprocessTextForAI(extractedText)
+
+      // Generate the summary using OpenAI
+      const summary = await generateFormSummary(processedText)
+      setCoverageSummary(summary)
+    } catch (err) {
+      console.error('Error generating coverage summary:', err)
+      setError(`Failed to generate coverage summary: ${err.message}`)
+    } finally {
+      setIsGeneratingSummary(false)
+    }
+  }
+
   const clearContent = () => {
     setExtractedText('')
     setFileName('')
     setError('')
     setMetadata(null)
+    setCoverageSummary('')
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -314,11 +348,62 @@ const PDFUpload = () => {
                   {metadata &&
                     `${metadata.wordCount} words • ${metadata.characterCount} characters`}
                 </div>
+                <div className='flex space-x-3'>
+                  <button
+                    onClick={generateCoverageSummary}
+                    disabled={isGeneratingSummary || !extractedText}
+                    className='bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-medium py-2 px-4 rounded-md transition-colors duration-200 flex items-center'
+                  >
+                    {isGeneratingSummary ? (
+                      <>
+                        <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2'></div>
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <svg className='w-4 h-4 mr-2' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' />
+                        </svg>
+                        Generate Coverage Summary
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(extractedText)}
+                    className='bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium py-2 px-4 rounded-md transition-colors duration-200'
+                  >
+                    Copy Text
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Coverage Summary Display */}
+        {coverageSummary && (
+          <div className='border-t border-gray-200'>
+            <div className='px-6 py-4 bg-green-50'>
+              <h3 className='text-lg font-medium text-gray-900 mb-2 flex items-center'>
+                <svg className='w-5 h-5 mr-2 text-green-600' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                  <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' />
+                </svg>
+                AI Coverage Summary
+              </h3>
+              <div className='bg-white border border-gray-200 rounded-md p-4 max-h-96 overflow-y-auto'>
+                <div
+                  className='prose prose-sm max-w-none text-gray-700'
+                  dangerouslySetInnerHTML={{
+                    __html: coverageSummary.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                  }}
+                />
+              </div>
+              <div className='mt-3 flex justify-end'>
                 <button
-                  onClick={() => navigator.clipboard.writeText(extractedText)}
-                  className='bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium py-2 px-4 rounded-md transition-colors duration-200'
+                  onClick={() => navigator.clipboard.writeText(coverageSummary)}
+                  className='bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2 px-4 rounded-md transition-colors duration-200'
                 >
-                  Copy Text
+                  Copy Summary
                 </button>
               </div>
             </div>
