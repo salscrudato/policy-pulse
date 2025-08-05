@@ -6,8 +6,8 @@ import {
   formatTextForDisplay,
 } from '../../utils'
 
-// Set up the worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+// Set up the worker - use jsdelivr CDN which is more reliable
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
 
 const PDFUpload = () => {
   const [extractedText, setExtractedText] = useState('')
