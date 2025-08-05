@@ -11,3 +11,10 @@ export {
   validatePhone,
   validateUrl,
 } from './validation'
+export {
+  cleanPDFText,
+  extractPDFMetadata,
+  searchInPDFText,
+  splitTextIntoPages,
+  formatTextForDisplay,
+} from './pdfUtils'

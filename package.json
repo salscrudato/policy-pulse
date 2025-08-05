@@ -16,6 +16,7 @@
     "analyze": "npm run build && npx vite-bundle-analyzer dist/stats.html"
   },
   "dependencies": {
+    "pdfjs-dist": "^5.4.54",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
