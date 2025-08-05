@@ -1,0 +1,7 @@
+@import 'tailwindcss'; /* loads base + utilities in v4 */
+
+/* Example: custom theme tokens (CSS-first config) */
+@theme {
+  --color-brand: oklch(0.72 0.11 221.19);
+  --font-display: 'Inter', sans-serif;
+}
