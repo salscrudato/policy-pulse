@@ -1,0 +1,59 @@
+{
+  "name": "PDF Summarizer - AI-Powered Document Analysis",
+  "short_name": "PDF Summarizer",
+  "description": "AI-powered PDF document summarization with multiple length options and intelligent analysis",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en-US",
+  "categories": ["productivity", "business", "education"],
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Upload PDF",
+      "short_name": "Upload",
+      "description": "Upload a new PDF for summarization",
+      "url": "/?action=upload"
+    },
+    {
+      "name": "Demo Mode",
+      "short_name": "Demo",
+      "description": "Try the demo without API key",
+      "url": "/?mode=demo"
+    }
+  ],
+  "screenshots": [],
+  "related_applications": [],
+  "prefer_related_applications": false,
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
+  "file_handlers": [
+    {
+      "action": "/",
+      "accept": {
+        "application/pdf": [".pdf"]
+      },
+      "launch_type": "single-client"
+    }
+  ],
+  "protocol_handlers": [
+    {
+      "protocol": "web+pdfsummarizer",
+      "url": "/?url=%s"
+    }
+  ]
+}

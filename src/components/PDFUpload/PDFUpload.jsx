@@ -1,411 +1,318 @@
 import { useState, useRef } from 'react'
-import * as pdfjsLib from 'pdfjs-dist'
-import {
-  cleanPDFText,
-  extractPDFMetadata,
-  formatTextForDisplay,
-} from '../../utils'
-import { generateFormSummary, validateInsuranceForm, preprocessTextForAI } from '../../services/aiService'
-
-// Set up the worker - use jsdelivr CDN which is more reliable
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
+import { SUMMARY_LENGTHS } from '../../services/documentSummarizerService'
+import { FiUpload, FiFile, FiEdit3, FiFileText, FiBook, FiRotateCw, FiX, FiAlertCircle } from 'react-icons/fi'
+import DocumentSummary from '../DocumentSummary/DocumentSummary'
+import usePDFProcessor from '../../hooks/usePDFProcessor'
+import { validateFileUpload, uploadRateLimiter } from '../../utils/security'
+import { useResponsive, getResponsiveContainer, getResponsiveGrid } from '../../utils/responsive'
 
 const PDFUpload = () => {
-  const [extractedText, setExtractedText] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [fileName, setFileName] = useState('')
+  const [selectedSummaryLength, setSelectedSummaryLength] = useState('MEDIUM')
   const [isDragOver, setIsDragOver] = useState(false)
-  const [metadata, setMetadata] = useState(null)
-  const [coverageSummary, setCoverageSummary] = useState('')
-  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
+  const [validationErrors, setValidationErrors] = useState([])
   const fileInputRef = useRef(null)
 
-  const extractTextFromPDF = async file => {
-    try {
-      setIsLoading(true)
-      setError('')
-      setExtractedText('')
+  // Responsive utilities
+  const { isMobile, isTablet, deviceType } = useResponsive()
 
-      const arrayBuffer = await file.arrayBuffer()
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+  // Use the enhanced PDF processor hook
+  const {
+    file,
+    isProcessing,
+    progress,
+    error,
+    summaryResult,
+    processFile,
+    regenerateSummary,
+    cancelProcessing,
+    reset,
+    hasResult,
+    canRegenerate,
+  } = usePDFProcessor()
 
-      let fullText = ''
+  // Enhanced file validation with security checks
+  const validateAndProcessFile = async (uploadedFile) => {
+    setValidationErrors([])
 
-      // Extract text from all pages
-      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum)
-        const textContent = await page.getTextContent()
-        const pageText = textContent.items.map(item => item.str).join(' ')
-        fullText += `Page ${pageNum}:\n${pageText}\n\n`
-      }
-
-      const cleanedText = cleanPDFText(fullText)
-      const formattedText = formatTextForDisplay(cleanedText)
-      const textMetadata = extractPDFMetadata(formattedText)
-
-      setExtractedText(formattedText)
-      setMetadata(textMetadata)
-      setFileName(file.name)
-    } catch (err) {
-      console.error('Error extracting PDF text:', err)
-      setError(
-        'Failed to extract text from PDF. Please ensure the file is a valid PDF.'
-      )
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleFileSelect = file => {
-    if (!file) return
-
-    if (file.type !== 'application/pdf') {
-      setError('Please select a valid PDF file.')
+    // Rate limiting check
+    const clientId = 'anonymous' // In a real app, this would be user ID or IP
+    if (!uploadRateLimiter.isAllowed(clientId)) {
+      const timeUntilReset = uploadRateLimiter.getTimeUntilReset(clientId)
+      const minutesUntilReset = Math.ceil(timeUntilReset / 60000)
+      setValidationErrors([`Upload rate limit exceeded. Please wait ${minutesUntilReset} minute(s) before trying again.`])
       return
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      // 10MB limit
-      setError('File size must be less than 10MB.')
+    // Enhanced file validation
+    const validation = validateFileUpload(uploadedFile)
+
+    if (!validation.isValid) {
+      setValidationErrors(validation.errors)
       return
     }
 
-    extractTextFromPDF(file)
+    if (validation.warnings.length > 0) {
+      setValidationErrors(validation.warnings)
+      // Continue processing despite warnings
+    }
+
+    // Process the file using the hook
+    await processFile(uploadedFile, selectedSummaryLength)
   }
 
-  const handleFileChange = event => {
-    const file = event.target.files[0]
-    handleFileSelect(file)
+  // Regenerate summary with different length
+  const regenerateWithLength = async (newLength) => {
+    setSelectedSummaryLength(newLength)
+    await regenerateSummary(newLength)
   }
 
-  const handleDrop = event => {
-    event.preventDefault()
-    setIsDragOver(false)
-
-    const file = event.dataTransfer.files[0]
-    handleFileSelect(file)
+  // Handle file selection
+  const handleFileSelect = (selectedFile) => {
+    validateAndProcessFile(selectedFile)
   }
 
-  const handleDragOver = event => {
-    event.preventDefault()
+  // Drag and drop handlers
+  const handleDragOver = (e) => {
+    e.preventDefault()
     setIsDragOver(true)
   }
 
-  const handleDragLeave = event => {
-    event.preventDefault()
+  const handleDragLeave = (e) => {
+    e.preventDefault()
     setIsDragOver(false)
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    setIsDragOver(false)
+    const droppedFile = e.dataTransfer.files[0]
+    if (droppedFile) {
+      handleFileSelect(droppedFile)
+    }
+  }
+
+  const handleFileChange = (e) => {
+    const selectedFile = e.target.files[0]
+    if (selectedFile) {
+      handleFileSelect(selectedFile)
+    }
   }
 
   const handleClick = () => {
     fileInputRef.current?.click()
   }
 
-  const generateCoverageSummary = async () => {
-    if (!extractedText) {
-      setError('No text available to summarize. Please upload a PDF first.')
-      return
-    }
-
-    try {
-      setIsGeneratingSummary(true)
-      setError('')
-
-      // Validate if this appears to be an insurance form
-      if (!validateInsuranceForm(extractedText)) {
-        setError('This document does not appear to be an insurance form. The AI summary works best with insurance policy documents.')
-        return
-      }
-
-      // Preprocess text for better AI analysis
-      const processedText = preprocessTextForAI(extractedText)
-
-      // Generate the summary using OpenAI
-      const summary = await generateFormSummary(processedText)
-      setCoverageSummary(summary)
-    } catch (err) {
-      console.error('Error generating coverage summary:', err)
-      setError(`Failed to generate coverage summary: ${err.message}`)
-    } finally {
-      setIsGeneratingSummary(false)
-    }
-  }
-
-  const clearContent = () => {
-    setExtractedText('')
-    setFileName('')
-    setError('')
-    setMetadata(null)
-    setCoverageSummary('')
+  const resetUpload = () => {
+    reset()
+    setSelectedSummaryLength('MEDIUM')
+    setValidationErrors([])
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
   }
 
   return (
-    <div className='w-full max-w-4xl mx-auto p-6'>
-      <div className='bg-white rounded-lg shadow-lg overflow-hidden'>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-4 sm:py-8 lg:py-12 px-4">
+      <div className={getResponsiveContainer('lg')}>
         {/* Header */}
-        <div className='bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4'>
-          <h2 className='text-xl font-semibold text-white flex items-center'>
-            <svg
-              className='w-6 h-6 mr-2'
-              fill='none'
-              stroke='currentColor'
-              viewBox='0 0 24 24'
-            >
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z'
-              />
-            </svg>
-            PDF Text Extractor
-          </h2>
-          <p className='text-blue-100 text-sm mt-1'>
-            Upload a PDF file to extract and view its text content
+        <div className="text-center mb-8 sm:mb-12">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-2 sm:mb-4">
+            PDF Summarizer
+          </h1>
+          <p className="text-base sm:text-lg lg:text-xl text-gray-600 px-4">
+            AI-powered document summarization in seconds
           </p>
+
+          {!import.meta.env.VITE_OPENAI_API_KEY && (
+            <div className="mt-4 inline-flex items-center px-3 sm:px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg max-w-full">
+              <span className="text-yellow-800 text-xs sm:text-sm font-medium text-center">
+                🚀 Demo Mode - Add your OpenAI API key for full functionality
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Upload Area */}
-        <div className='p-6'>
-          <div
-            className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 cursor-pointer ${
-              isDragOver
-                ? 'border-blue-400 bg-blue-50'
-                : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
-            }`}
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onClick={handleClick}
-          >
-            <input
-              ref={fileInputRef}
-              type='file'
-              accept='.pdf'
-              onChange={handleFileChange}
-              className='hidden'
+        {!hasResult ? (
+          <div className="space-y-6 sm:space-y-8">
+            {/* Summary Length Selection */}
+            <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 lg:p-8">
+              <h2 className="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 mb-4 sm:mb-6">
+                Choose Summary Length
+              </h2>
+              <div className={getResponsiveGrid({ base: 1, sm: 2, md: 3 }) + ' gap-4 sm:gap-6'}>
+                {Object.entries(SUMMARY_LENGTHS).map(([key, config]) => {
+                  const IconComponent = config.icon === 'FiEdit3' ? FiEdit3 : 
+                                     config.icon === 'FiFileText' ? FiFileText : FiBook;
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setSelectedSummaryLength(key)}
+                      className={`p-4 sm:p-6 rounded-lg sm:rounded-xl border-2 transition-all ${
+                        selectedSummaryLength === key
+                          ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-md'
+                          : 'border-gray-200 hover:border-gray-300 text-gray-700 hover:shadow-sm'
+                      }`}
+                    >
+                      <div className="flex justify-center mb-3 sm:mb-4">
+                        <IconComponent className="w-6 h-6 sm:w-8 sm:h-8" />
+                      </div>
+                      <div className="font-semibold text-base sm:text-lg mb-1 sm:mb-2">
+                        {config.name}
+                      </div>
+                      <div className="text-xs sm:text-sm opacity-75 leading-relaxed">
+                        {config.description}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Upload Area */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+              <div
+                className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all ${
+                  isDragOver
+                    ? 'border-blue-400 bg-blue-50'
+                    : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
+                }`}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onClick={handleClick}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                
+                {isProcessing ? (
+                  <div className="space-y-4">
+                    <FiRotateCw className="w-12 h-12 text-blue-600 mx-auto animate-spin" />
+                    <div>
+                      <h3 className="text-xl font-semibold text-gray-900">Processing PDF...</h3>
+                      <p className="text-gray-600 mt-2">Extracting text and generating summary</p>
+
+                      {/* Progress bar */}
+                      <div className="mt-4">
+                        <div className="flex justify-between text-sm text-gray-600 mb-1">
+                          <span>Progress</span>
+                          <span>{progress}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${progress}%` }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      {/* Cancel button */}
+                      <button
+                        onClick={cancelProcessing}
+                        className="mt-4 inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                      >
+                        <FiX className="w-4 h-4 mr-2" />
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <FiUpload className="w-12 h-12 text-gray-400 mx-auto" />
+                    <div>
+                      <h3 className="text-xl font-semibold text-gray-900">Upload your PDF</h3>
+                      <p className="text-gray-600 mt-2">
+                        Drag and drop your PDF file here, or click to browse
+                      </p>
+                      <p className="text-sm text-gray-500 mt-2">
+                        Maximum file size: 10MB
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Enhanced error and validation display */}
+              {(error || validationErrors.length > 0) && (
+                <div className="mt-6 space-y-4">
+                  {error && (
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                      <div className="flex items-start">
+                        <FiAlertCircle className="w-5 h-5 text-red-600 mt-0.5 mr-3 flex-shrink-0" />
+                        <p className="text-red-700">{error}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {validationErrors.length > 0 && (
+                    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <div className="flex items-start">
+                        <FiAlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 mr-3 flex-shrink-0" />
+                        <div>
+                          <h4 className="font-medium text-yellow-800 mb-2">File Validation Issues:</h4>
+                          <ul className="text-yellow-700 text-sm space-y-1">
+                            {validationErrors.map((error, index) => (
+                              <li key={index}>• {error}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {error.includes('Rate limit') && (
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <h4 className="font-semibold text-blue-900 mb-2">💡 Tips to avoid rate limits:</h4>
+                      <ul className="text-blue-800 text-sm space-y-1">
+                        <li>• Try using "Short" summary length to reduce token usage</li>
+                        <li>• Wait a few minutes before trying again</li>
+                        <li>• Upload smaller PDF files when possible</li>
+                        <li>• Consider upgrading your OpenAI plan for higher limits</li>
+                      </ul>
+                    </div>
+                  )}
+
+                  {error.includes('API key') && (
+                    <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                      <h4 className="font-semibold text-green-900 mb-2">🔑 How to add your OpenAI API key:</h4>
+                      <ol className="text-green-800 text-sm space-y-1">
+                        <li>1. Get an API key from <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline">OpenAI Platform</a></li>
+                        <li>2. Create a <code className="bg-green-100 px-1 rounded">.env.local</code> file in your project root</li>
+                        <li>3. Add: <code className="bg-green-100 px-1 rounded">VITE_OPENAI_API_KEY=your_key_here</code></li>
+                        <li>4. Restart the development server</li>
+                      </ol>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-8">
+            {/* Summary Result */}
+            <DocumentSummary
+              summary={summaryResult.summary}
+              summaryLength={summaryResult.summaryLength}
+              documentType={summaryResult.documentType}
+              wordCount={summaryResult.wordCount}
+              model={summaryResult.model}
+              isDemo={summaryResult.isDemo}
+              onRegenerateWithLength={regenerateWithLength}
             />
 
-            <div className='flex flex-col items-center'>
-              <svg
-                className={`w-12 h-12 mb-4 transition-colors ${
-                  isDragOver ? 'text-blue-500' : 'text-gray-400'
-                }`}
-                fill='none'
-                stroke='currentColor'
-                viewBox='0 0 24 24'
-              >
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12'
-                />
-              </svg>
-
-              <h3 className='text-lg font-medium text-gray-900 mb-2'>
-                {isDragOver ? 'Drop your PDF here' : 'Upload PDF File'}
-              </h3>
-
-              <p className='text-gray-500 mb-4'>
-                Drag and drop your PDF file here, or click to browse
-              </p>
-
+            {/* Reset Button */}
+            <div className="text-center">
               <button
-                type='button'
-                className='bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200'
+                onClick={resetUpload}
+                className="inline-flex items-center px-6 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >
-                Choose File
+                <FiFile className="w-4 h-4 mr-2" />
+                Upload Another PDF
               </button>
-
-              <p className='text-xs text-gray-400 mt-2'>
-                Maximum file size: 10MB
-              </p>
-            </div>
-          </div>
-
-          {/* Error Message */}
-          {error && (
-            <div className='mt-4 p-4 bg-red-50 border border-red-200 rounded-md'>
-              <div className='flex'>
-                <svg
-                  className='w-5 h-5 text-red-400 mr-2 mt-0.5'
-                  fill='none'
-                  stroke='currentColor'
-                  viewBox='0 0 24 24'
-                >
-                  <path
-                    strokeLinecap='round'
-                    strokeLinejoin='round'
-                    strokeWidth={2}
-                    d='M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
-                  />
-                </svg>
-                <p className='text-red-700 text-sm'>{error}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Loading State */}
-          {isLoading && (
-            <div className='mt-4 p-4 bg-blue-50 border border-blue-200 rounded-md'>
-              <div className='flex items-center'>
-                <div className='animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-3'></div>
-                <p className='text-blue-700 text-sm'>
-                  Extracting text from PDF...
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* File Info */}
-          {fileName && !isLoading && (
-            <div className='mt-4 p-4 bg-green-50 border border-green-200 rounded-md'>
-              <div className='flex items-center justify-between'>
-                <div className='flex items-center'>
-                  <svg
-                    className='w-5 h-5 text-green-500 mr-2'
-                    fill='none'
-                    stroke='currentColor'
-                    viewBox='0 0 24 24'
-                  >
-                    <path
-                      strokeLinecap='round'
-                      strokeLinejoin='round'
-                      strokeWidth={2}
-                      d='M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'
-                    />
-                  </svg>
-                  <p className='text-green-700 text-sm font-medium'>
-                    {fileName}
-                  </p>
-                </div>
-                <button
-                  onClick={clearContent}
-                  className='text-green-600 hover:text-green-800 text-sm font-medium'
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Document Metadata */}
-        {metadata && (
-          <div className='border-t border-gray-200'>
-            <div className='px-6 py-4 bg-blue-50'>
-              <h3 className='text-lg font-medium text-gray-900 mb-3'>
-                Document Statistics
-              </h3>
-              <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
-                <div className='bg-white rounded-lg p-3 text-center'>
-                  <div className='text-2xl font-bold text-blue-600'>
-                    {metadata.wordCount.toLocaleString()}
-                  </div>
-                  <div className='text-sm text-gray-600'>Words</div>
-                </div>
-                <div className='bg-white rounded-lg p-3 text-center'>
-                  <div className='text-2xl font-bold text-green-600'>
-                    {metadata.characterCount.toLocaleString()}
-                  </div>
-                  <div className='text-sm text-gray-600'>Characters</div>
-                </div>
-                <div className='bg-white rounded-lg p-3 text-center'>
-                  <div className='text-2xl font-bold text-purple-600'>
-                    {metadata.lineCount.toLocaleString()}
-                  </div>
-                  <div className='text-sm text-gray-600'>Lines</div>
-                </div>
-                <div className='bg-white rounded-lg p-3 text-center'>
-                  <div className='text-2xl font-bold text-orange-600'>
-                    {metadata.estimatedReadingTime}
-                  </div>
-                  <div className='text-sm text-gray-600'>Min Read</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Extracted Text Display */}
-        {extractedText && (
-          <div className='border-t border-gray-200'>
-            <div className='px-6 py-4 bg-gray-50'>
-              <h3 className='text-lg font-medium text-gray-900 mb-2'>
-                Extracted Text
-              </h3>
-              <div className='bg-white border border-gray-200 rounded-md p-4 max-h-96 overflow-y-auto'>
-                <pre className='whitespace-pre-wrap text-sm text-gray-700 font-mono leading-relaxed'>
-                  {extractedText}
-                </pre>
-              </div>
-              <div className='mt-3 flex justify-between items-center'>
-                <div className='text-sm text-gray-500'>
-                  {metadata &&
-                    `${metadata.wordCount} words • ${metadata.characterCount} characters`}
-                </div>
-                <div className='flex space-x-3'>
-                  <button
-                    onClick={generateCoverageSummary}
-                    disabled={isGeneratingSummary || !extractedText}
-                    className='bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-medium py-2 px-4 rounded-md transition-colors duration-200 flex items-center'
-                  >
-                    {isGeneratingSummary ? (
-                      <>
-                        <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2'></div>
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <svg className='w-4 h-4 mr-2' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' />
-                        </svg>
-                        Generate Coverage Summary
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(extractedText)}
-                    className='bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium py-2 px-4 rounded-md transition-colors duration-200'
-                  >
-                    Copy Text
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Coverage Summary Display */}
-        {coverageSummary && (
-          <div className='border-t border-gray-200'>
-            <div className='px-6 py-4 bg-green-50'>
-              <h3 className='text-lg font-medium text-gray-900 mb-2 flex items-center'>
-                <svg className='w-5 h-5 mr-2 text-green-600' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                  <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' />
-                </svg>
-                AI Coverage Summary
-              </h3>
-              <div className='bg-white border border-gray-200 rounded-md p-4 max-h-96 overflow-y-auto'>
-                <div
-                  className='prose prose-sm max-w-none text-gray-700'
-                  dangerouslySetInnerHTML={{
-                    __html: coverageSummary.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                  }}
-                />
-              </div>
-              <div className='mt-3 flex justify-end'>
-                <button
-                  onClick={() => navigator.clipboard.writeText(coverageSummary)}
-                  className='bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2 px-4 rounded-md transition-colors duration-200'
-                >
-                  Copy Summary
-                </button>
-              </div>
             </div>
           </div>
         )}

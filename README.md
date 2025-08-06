@@ -1,42 +1,106 @@
-# Policy Pulse
+# PDF Summarizer
 
-A modern React application built with Vite, featuring best practices for scalability, maintainability, and developer experience.
+**AI-Powered Document Summarization Platform**
 
-## 🚀 Features
+## 🌐 **Live Demo**
 
+**🎉 The application is now live at: [https://pdf-summarizer-web.web.app](https://pdf-summarizer-web.web.app)**
+
+Try the demo mode without an API key or add your own OpenAI API key for full functionality!
+
+---
+
+PDF Summarizer is a comprehensive, professional-grade application designed to analyze and summarize any PDF document using advanced AI technology. Built with modern React architecture and powered by OpenAI's GPT models, it provides flexible summary lengths, intelligent document type detection, and professional-quality analysis.
+
+## Key Features
+
+### **AI-Powered Analysis**
+- **Advanced Coverage Detection**: Identifies all types of P&C insurance coverages including liability, property, auto, workers' compensation, and specialty lines
+- **Intelligent Document Processing**: Supports policy declarations, ACORD certificates, coverage forms, endorsements, binders, and quotes
+- **Financial Data Extraction**: Automatically extracts limits, deductibles, premiums, and policy terms with high accuracy
+- **Gap Analysis**: Identifies missing coverages and provides professional recommendations
+
+### **Professional UI/UX**
+- **Multi-View Analysis**: Overview, detailed coverage, financial summary, and gap analysis tabs
+- **Enhanced Visual Hierarchy**: Designed specifically for insurance professionals
+- **Analysis History**: Track and review previous analyses
+- **Export Capabilities**: PDF, Excel, JSON, and CSV export formats
+
+### **Technical Excellence**
 - **React 19** with modern hooks and patterns
 - **Vite** for lightning-fast development and optimized builds
 - **Tailwind CSS v4** for utility-first styling
-- **ESLint** with React-specific rules for code quality
-- **Prettier** for consistent code formatting
-- **Error Boundary** for graceful error handling
-- **Custom Hooks** for reusable logic
-- **Utility Functions** for common operations
-- **Modular Architecture** for scalability
+- **Advanced Error Handling** with circuit breaker patterns
+- **Performance Optimization** for large document processing
+- **Comprehensive Testing Suite** with Vitest
 
-## 📁 Project Structure
+## Architecture Overview
+
+Policy Pulse follows a modular, scalable architecture designed for enterprise-grade insurance applications:
 
 ```
 src/
-├── components/          # Reusable UI components
-│   ├── ErrorBoundary/   # Error boundary component
-│   └── index.js         # Component exports
-├── hooks/               # Custom React hooks
-│   ├── useLocalStorage.js
-│   └── index.js
-├── utils/               # Utility functions
-│   ├── dateUtils.js     # Date formatting and manipulation
-│   ├── validation.js    # Form validation helpers
-│   └── index.js
-├── constants/           # Application constants
-│   └── index.js
-├── assets/              # Static assets
-├── App.jsx              # Main application component
-├── main.jsx             # Application entry point
-└── index.css            # Global styles
+├── components/                    # React components
+│   ├── PDFUpload/                # PDF upload and processing
+│   ├── CoverageSummary/          # Basic coverage display
+│   ├── EnhancedCoverageSummary/  # Advanced coverage analysis UI
+│   └── ErrorBoundary/            # Error handling component
+├── services/                     # Business logic and API services
+│   ├── aiService.js              # Original OpenAI integration
+│   └── enhancedAiService.js      # Advanced AI analysis service
+├── utils/                        # Utility functions and helpers
+│   ├── pdfUtils.js               # PDF processing utilities
+│   ├── coverageExtraction.js     # P&C coverage identification
+│   ├── advancedDataExtraction.js # Financial and policy data extraction
+│   ├── exportUtils.js            # Multi-format export capabilities
+│   ├── performance.js            # Performance optimization utilities
+│   └── errorHandling.js          # Advanced error handling and recovery
+├── hooks/                        # Custom React hooks
+├── constants/                    # Application constants
+├── test/                         # Comprehensive test suite
+│   ├── enhancedAiService.test.js
+│   ├── coverageExtraction.test.js
+│   ├── mockData.js
+│   └── testUtils.js
+└── assets/                       # Static assets
 ```
 
-## 🛠️ Development
+## Quick Start
+
+### Prerequisites
+- **Node.js** (v18 or higher)
+- **npm** or **yarn**
+- **OpenAI API Key** (for AI analysis functionality)
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/salscrudato/policy-pulse.git
+   cd policy-pulse
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Configure environment variables**
+   ```bash
+   cp .env.example .env.local
+   # Add your OpenAI API key to .env.local
+   echo "VITE_OPENAI_API_KEY=your_openai_api_key_here" >> .env.local
+   ```
+
+4. **Start development server**
+   ```bash
+   npm run dev
+   ```
+
+5. **Open your browser**
+   Navigate to `http://localhost:3000`
+
+## Development
 
 ### Prerequisites
 
@@ -60,14 +124,49 @@ src/
 
 ### Available Scripts
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm run lint` - Run ESLint
-- `npm run lint:fix` - Fix ESLint errors automatically
-- `npm run format` - Format code with Prettier
-- `npm run format:check` - Check code formatting
-- `npm run clean` - Clean build directory
+```bash
+# Development
+npm run dev              # Start development server
+npm run build           # Build for production
+npm run preview         # Preview production build
+
+# Testing
+npm run test            # Run test suite
+npm run test:ui         # Run tests with UI
+npm run test:coverage   # Generate coverage report
+
+# Code Quality
+npm run lint            # Run ESLint
+npm run lint:fix        # Fix ESLint issues
+npm run format          # Format code with Prettier
+npm run format:check    # Check code formatting
+
+# Analysis
+npm run analyze         # Bundle size analysis
+```
+
+## Usage Guide
+
+### **1. Upload Insurance Document**
+- Drag and drop or click to upload PDF files (up to 10MB)
+- Supported formats: Policy declarations, ACORD certificates, coverage forms, endorsements, binders
+
+### **2. AI Analysis Process**
+- Document validation ensures insurance content
+- Advanced text preprocessing optimizes for AI analysis
+- OpenAI GPT models analyze coverage comprehensively
+- Structured data extraction identifies all coverage elements
+
+### **3. Review Analysis Results**
+- **Overview Tab**: Coverage categories and summary statistics
+- **Details Tab**: Comprehensive coverage breakdown with confidence scores
+- **Financial Tab**: Limits, deductibles, premiums in organized tables
+- **Gap Analysis Tab**: Missing coverages and professional recommendations
+
+### **4. Export and Share**
+- **Copy**: Copy analysis to clipboard
+- **Print**: Print-friendly PDF generation
+- **Export**: JSON, CSV, Excel formats available
 
 ## 🏗️ Build & Deployment
 
@@ -110,11 +209,18 @@ The theme is configured in `src/index.css`:
 
 ### Environment Variables
 
-Copy `.env.example` to `.env.local` and configure:
+Create a `.env.local` file with the following variables:
 
 ```env
-VITE_API_BASE_URL=http://localhost:3001/api
-VITE_APP_NAME=Policy Pulse
+# OpenAI Configuration (Required for AI analysis)
+VITE_OPENAI_API_KEY=your_openai_api_key_here
+
+# Optional: API Base URL (defaults to OpenAI)
+VITE_API_BASE_URL=https://api.openai.com/v1
+
+# Optional: Application Settings
+VITE_MAX_FILE_SIZE=10485760  # 10MB in bytes
+VITE_SUPPORTED_FORMATS=application/pdf
 ```
 
 ### ESLint Configuration
@@ -133,17 +239,43 @@ Code formatting is standardized with:
 - 2-space indentation
 - Trailing commas
 
-## 📦 Dependencies
+## Dependencies
 
 ### Core Dependencies
-- `react` - UI library
-- `react-dom` - DOM rendering
+- `react` (v19) - Modern UI library with latest features
+- `react-dom` (v19) - DOM rendering for React
+- `pdfjs-dist` (v5.4) - Client-side PDF processing
 
 ### Development Dependencies
 - `@vitejs/plugin-react` - React support for Vite
-- `@tailwindcss/vite` - Tailwind CSS integration
-- `eslint` - Code linting
+- `@tailwindcss/vite` - Tailwind CSS v4 integration
+- `vitest` - Fast unit testing framework
+- `@testing-library/react` - React testing utilities
+- `eslint` - Code linting with React rules
 - `prettier` - Code formatting
+
+## Testing
+
+Policy Pulse includes a comprehensive testing suite:
+
+### **Running Tests**
+```bash
+npm run test              # Run all tests
+npm run test:ui          # Run tests with UI
+npm run test:coverage    # Generate coverage report
+```
+
+### **Test Structure**
+- **Unit Tests**: Individual component and utility testing
+- **Integration Tests**: AI service and data extraction testing
+- **Mock Data**: Realistic insurance document samples
+- **Coverage Reports**: Detailed test coverage analysis
+
+### **Key Test Files**
+- `src/test/enhancedAiService.test.js` - AI service functionality
+- `src/test/coverageExtraction.test.js` - Coverage identification
+- `src/test/mockData.js` - Sample insurance documents
+- `src/test/testUtils.js` - Testing utilities
 
 ## 🚀 Scaling Guidelines
 
